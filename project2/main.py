@@ -102,16 +102,15 @@ def calculate_estimated_receiver_position(method, unknown_receiver, known_receiv
     calculated_ambiguity = None
 
     L1_frequency = 1575.42*10**6
-    L2_frequency = 1227.60*10**6
+    # L2_frequency = 1227.60*10**6
     c = 299792458
-    lambda1 = c/L1_frequency
-    lambda2 = c/L2_frequency
+
 
     phase_ambiguity =[L1_frequency/c]*(len(satellites)-1)
-
     error = 8*10**-9
     i=0
     while abs(delta_xr) >error or abs(delta_yr) >error or abs(delta_zr) >error:
+        print("-----------------Iteration:", i+1, "-----------------")
         x_matrix = X_matrix(satellites, [known_receiver, unknown_receiver], t1, t2, phase_ambiguity)
         # print_X_matrix(x_matrix)
         delta_xr = x_matrix[0][0]
@@ -209,11 +208,11 @@ def calculate_phase_ambiguity(method, receiver, satellites, t1, t2):
 #X matrix
 def X_matrix(satellites, receivers, t1, t2, phase_ambiguity):
     L = L_matrix(satellites, receivers, t1, t2)
-    # print_L_matrix(L)
+    print_L_matrix(L)
     A = A_matrix(satellites, receivers[1], t1, t2, phase_ambiguity)
-    # print_A_matrix(A)
+    print_A_matrix(A)
     X = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(L)
-    # print_X_matrix(X)
+    print_X_matrix(X)
     return X
 
 #L matrix
@@ -474,6 +473,7 @@ if __name__ == "__main__":
     print_ellipsoidal_and_cartesian_coordinates(RA, RB)
     #Correct
 
+
     ###Task 2
     #Estimate position of receiver B
     print("------Task 2------")
@@ -485,26 +485,23 @@ if __name__ == "__main__":
     p_float = calculate_estimated_receiver_position(method, unknown_receiver_float, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
 
 
-    # ###Task 3
-    # print("------Task 3------")
-    # print("-a: Do nothing and use the real ambiguity in the next step-")
+    # # ###Task 3
+    # # print("------Task 3------")
+    # # print("-a: Do nothing and use the real ambiguity in the next step-")
 
 
-    # print("-b: Fix the real ambiguity to nearest integer value-")
-    unknown_receiver_fix = RB
-    p_fix = calculate_estimated_receiver_position("fix", unknown_receiver_fix, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
+    # # print("-b: Fix the real ambiguity to nearest integer value-")
+    # unknown_receiver_fix = RB
+    # p_fix = calculate_estimated_receiver_position("fix", unknown_receiver_fix, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
 
-    # print("-c: Use the standard deviation of ambiguities computed from LS in step 2 and fix the ambiguities considering the standard deviations.")
-    unknown_receiver_std = RB
-    p_std = calculate_estimated_receiver_position("std", unknown_receiver_std, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
-
-
-    print(p_float)
-    print(p_fix)
-    print(p_std)
-    ###Task 4
-    print("------Task 4------")
-    calculate_geodetic_coordinates(unknown_receiver_std) #Receiver. Only needs X, Y, Z
+    # # print("-c: Use the standard deviation of ambiguities computed from LS in step 2 and fix the ambiguities considering the standard deviations.")
+    # unknown_receiver_std = RB
+    # p_std = calculate_estimated_receiver_position("std", unknown_receiver_std, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
 
 
-
+    # print(p_float)
+    # print(p_fix)
+    # print(p_std)
+    # ###Task 4
+    # print("------Task 4------")
+    # calculate_geodetic_coordinates(unknown_receiver_std) #Receiver. Only needs X, Y, Z
