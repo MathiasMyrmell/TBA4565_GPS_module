@@ -25,6 +25,10 @@ class Receiver:
         self.a = 6378137
         self.b = 6356752.3142
 
+        #Calculated values
+        self.PDOP = None
+        self.matrices = None
+
 
     ##Task 1
     def calculate_cartesian_coordinates(self):

@@ -3,6 +3,12 @@ from prettytable import PrettyTable
 from satellite import Satellite
 import math
 import numpy as np
+import copy
+
+#Global variables
+L1 = 1575.42*10**6
+c = 299792458
+_lambda = c/L1
 
 def load_data(path):
     satellites = []
@@ -85,82 +91,42 @@ def print_variance_covariance_matrix(VCV_matrix):
     print(table)
 
 
-
-
 ###Task 2
-def calculate_estimated_receiver_position(method, unknown_receiver, known_receiver, satellites, t1, t2):
-    print("-Calculating estimated receiver position-")
+def calculate_estimated_receiver_position(unknown_receiver, known_receiver, satellites, t1, t2):
     unknown_receiver.estimated_X = unknown_receiver.approx_X
     unknown_receiver.estimated_Y = unknown_receiver.approx_Y
     unknown_receiver.estimated_Z = unknown_receiver.approx_Z
 
-    
-
     delta_xr = 1
     delta_yr = 1
     delta_zr = 1
-    calculated_ambiguity = None
 
-    L1_frequency = 1575.42*10**6
-    # L2_frequency = 1227.60*10**6
-    c = 299792458
-
-
-    phase_ambiguity =[L1_frequency/c]*(len(satellites)-1)
+    phase_ambiguity =[_lambda]*(len(satellites)-1)
     error = 8*10**-9
     i=0
     while abs(delta_xr) >error or abs(delta_yr) >error or abs(delta_zr) >error:
-        print("-----------------Iteration:", i+1, "-----------------")
-        x_matrix = X_matrix(satellites, [known_receiver, unknown_receiver], t1, t2, phase_ambiguity)
-        # print_X_matrix(x_matrix)
-        delta_xr = x_matrix[0][0]
-        delta_yr = x_matrix[1][0]
-        delta_zr = x_matrix[2][0]
-        calculated_ambiguity = [x_matrix[3][0], x_matrix[4][0], x_matrix[5][0], x_matrix[6][0]]
+        # print("-----------------Iteration:", i+1, "-----------------")
+        L = L_matrix(satellites, [known_receiver, unknown_receiver], t1, t2)
+        # print_L_matrix(L)
+        A = A_matrix(satellites, unknown_receiver, t1, t2, phase_ambiguity)
+        # print_A_matrix(A)
+        P = P_matrix()
+        X = np.linalg.inv(A.T.dot(P).dot(A)).dot(A.T).dot(P).dot(L)
+        
+        delta_xr = X[0][0]
+        delta_yr = X[1][0]
+        delta_zr = X[2][0]
         unknown_receiver.estimated_X += delta_xr
         unknown_receiver.estimated_Y += delta_yr
         unknown_receiver.estimated_Z += delta_zr
+        unknown_receiver.matrices = [X, L, A, P]
         i+=1
     print("Iterations:", i)
-    
-    if method == "std":
-        # Calculate new phase ambiguity
-        print("Calculated ambiguity before:", phase_ambiguity)
-        print("Calculated ambiguity before:", calculated_ambiguity)
-        for i in range(len(phase_ambiguity)):
-            phase_ambiguity[i] = phase_ambiguity[i]+calculated_ambiguity[i]
-        print("Calculated ambiguity before:", phase_ambiguity)
-        # Calculate with new ambiguity
-        x_matrix = X_matrix(satellites, [known_receiver, unknown_receiver], t1, t2, phase_ambiguity)
-        # print_X_matrix(x_matrix)
-        delta_xr = x_matrix[0][0]
-        delta_yr = x_matrix[1][0]
-        delta_zr = x_matrix[2][0]
-        unknown_receiver.estimated_X += delta_xr
-        unknown_receiver.estimated_Y += delta_yr
-        unknown_receiver.estimated_Z += delta_zr
-        
-
-    elif method =="fix":
-        #Calculate new phase ambiguity
-        print("Calculated ambiguity before:", phase_ambiguity)
-        for i in range(len(phase_ambiguity)):
-            phase_ambiguity[i] = round(phase_ambiguity[i])
-        print("Calculated ambiguity after:", phase_ambiguity)
-        # Calculate with new ambiguity
-        x_matrix = X_matrix(satellites, [known_receiver, unknown_receiver], t1, t2, phase_ambiguity)
-        # print_X_matrix(x_matrix)
-        delta_xr = x_matrix[0][0]
-        delta_yr = x_matrix[1][0]
-        delta_zr = x_matrix[2][0]
-        unknown_receiver.estimated_X += delta_xr
-        unknown_receiver.estimated_Y += delta_yr
-        unknown_receiver.estimated_Z += delta_zr
-        
 
     Q = calculate_variance_covariance_matrix(satellites, unknown_receiver, t1, t2, phase_ambiguity)
     print_variance_covariance_matrix(Q)
     PDOP = calculate_PDOP(Q)
+    unknown_receiver.PDOP = PDOP
     print("PDOP:", PDOP)
 
     positions = PrettyTable()
@@ -171,7 +137,6 @@ def calculate_estimated_receiver_position(method, unknown_receiver, known_receiv
     positions.align = "l"
     positions.title = "Receiver position (m)"
     print(positions)
-    return [unknown_receiver.estimated_X, unknown_receiver.estimated_Y, unknown_receiver.estimated_Z]
 
 def calculate_phase_ambiguity(method, receiver, satellites, t1, t2):
     #Calculate phase_ambiguity
@@ -203,17 +168,22 @@ def calculate_phase_ambiguity(method, receiver, satellites, t1, t2):
     return PA
 
 
-
-
 #X matrix
 def X_matrix(satellites, receivers, t1, t2, phase_ambiguity):
     L = L_matrix(satellites, receivers, t1, t2)
-    print_L_matrix(L)
+    # print_L_matrix(L)
     A = A_matrix(satellites, receivers[1], t1, t2, phase_ambiguity)
-    print_A_matrix(A)
-    X = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(L)
-    print_X_matrix(X)
-    return X
+    # print_A_matrix(A)
+    P = P_matrix()
+
+    #Old X
+    # X = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(L)
+
+    #New X
+    X = np.linalg.inv(A.T.dot(P).dot(A)).dot(A.T).dot(P).dot(L)
+
+    # print_X_matrix(X)
+    return X, L, A
 
 #L matrix
 def L_matrix(satellites, receivers, t1, t2):
@@ -252,6 +222,7 @@ def calc_L(satellites, receivers, t):
     p_IA0 = _calc_p0(SI, RA, t)
 
     L = phi - p_JB0 + p_IB0 + p_JA0 - p_IA0
+    
     return L
 
 def _calc_phi(satellites, receivers, t):
@@ -264,12 +235,11 @@ def _calc_phi(satellites, receivers, t):
     phi_BI = SI.get_carrier_phase_observation(RB.name, t)
     phi_BJ = SJ.get_carrier_phase_observation(RB.name, t)
 
-    phi = phi_BJ-phi_BI-phi_AJ+phi_AI
+    phi = (_lambda)*(phi_BJ-phi_BI-phi_AJ+phi_AI)
+
     return phi
 
 def _calc_p0(satellite, receiver, t):
-    #X^j = saetllite
-    #X_i0 = receiver
     satC = satellite.get_coordinates(receiver.name, t)
     recC = receiver.get_estimated_coordinates_cartesian()
     p0 = math.sqrt(((satC[0]-recC[0])**2) + ((satC[1]-recC[1])**2) + ((satC[2]-recC[2])**2))
@@ -277,7 +247,6 @@ def _calc_p0(satellite, receiver, t):
 
 #A matrix
 def A_matrix(satellites, receiver, t1, t2, phase_ambiguity):
-    l = math.radians(receiver.lambda_) #old used lambda. used same for every line A matrix
     times = [t1, t2]
     #Calculate AX
     SI = satellites[0]
@@ -307,18 +276,6 @@ def A_matrix(satellites, receiver, t1, t2, phase_ambiguity):
             A = calc_AZ([SI, S], receiver, t)
             AZ[i].append(A)
 
-
-    ## Old way
-    # A = np.array([
-    #     [AX[0][0], AY[0][0], AZ[0][0], l, 0, 0, 0],
-    #     [AX[0][1], AY[0][1], AZ[0][1], 0, l, 0, 0],
-    #     [AX[0][2], AY[0][2], AZ[0][2], 0, 0, l, 0],
-    #     [AX[0][3], AY[0][3], AZ[0][3], 0, 0, 0, l],
-    #     [AX[1][0], AY[1][0], AZ[1][0], l, 0, 0, 0],
-    #     [AX[1][1], AY[1][1], AZ[1][1], 0, l, 0, 0],
-    #     [AX[1][2], AY[1][2], AZ[1][2], 0, 0, l, 0],
-    #     [AX[1][3], AY[1][3], AZ[1][3], 0, 0, 0, l]
-    # ])
     ## A matrix
     A = np.array([
         [AX[0][0], AY[0][0], AZ[0][0], phase_ambiguity[0],  0,                  0,                  0                   ],
@@ -380,10 +337,31 @@ def calc_AZ(satellites, receiver, time):
     AZ = -(ZJ-RZ)/PJR + (ZI-RZ)/PIR
     return AZ
 
+#P matrix
+def P_matrix():
+    sigma = 0.002
+    factor = (1/(2*(sigma**2)))*(1/5)
+    matrix = np.array([
+        [4, -1, -1, -1, 0, 0, 0, 0],
+        [-1, 4, -1, -1, 0, 0, 0, 0],
+        [-1, -1, 4, -1, 0, 0, 0, 0],
+        [-1, -1, -1, 4, 0, 0, 0, 0],
+        [0, 0, 0, 0, 4, -1, -1, -1],
+        [0, 0, 0, 0, -1, 4, -1, -1],
+        [0, 0, 0, 0, -1, -1, 4, -1],
+        [0, 0, 0, 0, -1, -1, -1, 4]
+    ])
+    return factor*matrix
+
 #VarianceCovarianceMatrix
 def calculate_variance_covariance_matrix(satellites, receiver, t1, t2, phase_ambiguity):
     A = A_matrix(satellites, receiver, t1, t2, phase_ambiguity)
-    Q = np.linalg.inv(A.T.dot(A))
+    P = P_matrix()
+    #Old Q
+    # Q = np.linalg.inv(A.T.dot(A))
+
+    #New Q
+    Q = np.linalg.inv(A.T.dot(P).dot(A))
     return Q
 
 def calculate_PDOP(VCVM):
@@ -393,17 +371,91 @@ def calculate_PDOP(VCVM):
 
     PDOP = math.sqrt(qxx+qyy+qzz)
     return PDOP
-###Task 3
 
+
+###Task 3
+def estimate_receiver_coordinates_real_ambiguity(receiver):
+    X = receiver.matrices[0]
+    L = receiver.matrices[1]
+    A = receiver.matrices[2]
+    P = receiver.matrices[3]
+
+    n_values = X[3:7]
+    n_values = n_values*_lambda
+    for i in range(0, len(n_values)):
+        L[i][0]-=(n_values[i])
+        L[i+4][0]-=(n_values[i])
+    A = np.delete(A, [3,4,5,6], 1)
+
+    X = np.linalg.inv(A.T.dot(P).dot(A)).dot(A.T).dot(P).dot(L)
+
+    receiver.estimated_X+=X[0][0]
+    receiver.estimated_Y+=X[1][0]
+    receiver.estimated_Z+=X[2][0]
+    receiver.matrices = [X, L, A, P]
+
+def estimate_receiver_coordinates_integer_ambiguity(receiver):
+    X = receiver.matrices[0]
+    L = receiver.matrices[1]
+    A = receiver.matrices[2]
+    P = receiver.matrices[3]
+
+    n_values = X[3:7]
+    for i in range(0, len(n_values)):
+        n_values[i][0] = round(n_values[i][0])
+    n_values = n_values*_lambda
+    for i in range(0, len(n_values)):
+        L[i][0]-=(n_values[i])
+        L[i+4][0]-=(n_values[i])
+ 
+    A = np.delete(A, [3,4,5,6], 1)
+
+    #New X
+    X = np.linalg.inv(A.T.dot(P).dot(A)).dot(A.T).dot(P).dot(L)
+    
+    receiver.estimated_X+=X[0][0]
+    receiver.estimated_Y+=X[1][0]
+    receiver.estimated_Z+=X[2][0]
+    receiver.matrices = [X, L, A, P]
+ 
+def estimate_receiver_coordinates_std_ambiguity(receiver):
+    X = receiver.matrices[0]
+    A = receiver.matrices[2]
+    P = receiver.matrices[3]
+    CX = np.linalg.inv(A.T.dot(P).dot(A))
+    n_values1 = X[3:7]
+    n_values2 = X[3:7]
+    for i in range(0, len(n_values1)):
+        n_values1[i][0] = round(n_values1[i][0]-CX[i][i])
+    
+    for i in range(0, len(n_values2)):
+        n_values2[i][0] = round(n_values2[i][0]+CX[i][i])
+    
+    if n_values1[0] == n_values2[0] and n_values1[1] == n_values2[1] and n_values1[2] == n_values2[2] and n_values1[3] == n_values2[3]:
+        print("Same values for n. Results will be the same as for integer ambiguity")
+    else:
+        print("Different values for n. Results will be different than for integer ambiguity")
+
+def calculate_variance_covariance(receiver):
+    A = receiver.matrices[2]
+    P = receiver.matrices[3]
+    CX = np.linalg.inv(A.T.dot(P).dot(A))
+    print_variance_covariance_matrix(CX)
+
+    PDOP = calculate_PDOP(CX)
+    print("PDOP:", PDOP)
+    
 
 ###Task 4
 def calculate_geodetic_coordinates(receiver):
     height, phi = _calculate_geodetic_height(receiver)
-    _lambda = math.atan(receiver.estimated_Y/receiver.estimated_X)
+    lam = math.degrees(math.atan(receiver.estimated_Y/receiver.estimated_X))
+    if(not 0<lam<180):
+        lam += 180
 
     geodetic = PrettyTable()
     geodetic.field_names = (["phi","lambda", "h"])
-    geodetic.add_row([math.degrees(phi), math.degrees(_lambda), height])
+    geodetic.add_row([math.degrees(phi), lam, height])
     geodetic.align = "l"
     geodetic.title = "Estimated receiver position, geodetic coordinates"
     print(geodetic)
@@ -447,22 +499,22 @@ def _calculate_geodetic_height(receiver):
 
 
 if __name__ == "__main__":
-    path = "project2/data.txt"
-    satellites = load_data(path)
+    path        = "project2/data.txt"
+    satellites  = load_data(path)
 
     #ReceiverA (Known station)
-    phiA = -32.003884648
+    phiA    = -32.003884648
     lambdaA = 115.894802001
     heightA = 23.983
-    known = True
-    RA = Receiver("A",phiA, lambdaA, heightA, known)
+    known   = True
+    RA      = Receiver("A",phiA, lambdaA, heightA, known)
 
     #ReceiverB (Unknown station)
-    phiB = -31.9
+    phiB    = -31.9
     lambdaB = 115.75
     heightB = 50
-    known = False
-    RB = Receiver("B",phiB, lambdaB, heightB, known)
+    known   = False
+    RB      = Receiver("B",phiB, lambdaB, heightB, known)
 
     ###Task 1
     #Transform receiver coordinates from ellipsoidal to cartesian coordinates
@@ -471,37 +523,46 @@ if __name__ == "__main__":
     RA.calculate_cartesian_coordinates()
     RB.calculate_cartesian_coordinates()
     print_ellipsoidal_and_cartesian_coordinates(RA, RB)
-    #Correct
+    #CORRECT
 
 
     ###Task 2
     #Estimate position of receiver B
-    print("------Task 2------")
+    print("\n------Task 2------")
     print("-Estimate position of receiver B-")
     t1 = 172800
     t2 = 175020
-    method = "float" #float, fix, std
-    unknown_receiver_float = RB
-    p_float = calculate_estimated_receiver_position(method, unknown_receiver_float, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
+    calculate_estimated_receiver_position(RB, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
+
+    ###Task 3
+    print("\n------Task 3------")
+    print("---------a--------")
+    print("-Do nothing and use the real ambiguity-")
+    receiver_float = copy.deepcopy(RB)
+    estimate_receiver_coordinates_real_ambiguity(receiver_float)
+    calculate_geodetic_coordinates(receiver_float)
+    calculate_variance_covariance(receiver_float)
 
 
-    # # ###Task 3
-    # # print("------Task 3------")
-    # # print("-a: Do nothing and use the real ambiguity in the next step-")
+
+    print("\n--------b--------")
+    print("-Fix the real ambiguity to nearest integer value-")
+    receiver_fix = copy.deepcopy(RB)
+    estimate_receiver_coordinates_integer_ambiguity(receiver_fix)
+    calculate_geodetic_coordinates(receiver_fix)
+    calculate_variance_covariance(receiver_fix)
 
 
-    # # print("-b: Fix the real ambiguity to nearest integer value-")
-    # unknown_receiver_fix = RB
-    # p_fix = calculate_estimated_receiver_position("fix", unknown_receiver_fix, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
+    print("\n------c------")
+    print("-Use the standard deviation of ambiguities computed from LS in step 2 and fix the ambiguities considering the standard deviations.")
+    receiver_std = copy.deepcopy(RB)
+    estimate_receiver_coordinates_std_ambiguity(receiver_std)
+    # calculate_variance_covariance(receiver_std)
+    # calculate_geodetic_coordinates(receiver_std)
 
-    # # print("-c: Use the standard deviation of ambiguities computed from LS in step 2 and fix the ambiguities considering the standard deviations.")
-    # unknown_receiver_std = RB
-    # p_std = calculate_estimated_receiver_position("std", unknown_receiver_std, RA, satellites, t1, t2) #Unknown receiver, known receiver, satellites, time 1, time 2
+    # ##Task 4
+    print("\n------Task 4------")
+    chosen_receiver = receiver_fix
+    calculate_geodetic_coordinates(chosen_receiver) #Receiver. Only needs X, Y, Z
 
 
-    # print(p_float)
-    # print(p_fix)
-    # print(p_std)
-    # ###Task 4
-    # print("------Task 4------")
-    # calculate_geodetic_coordinates(unknown_receiver_std) #Receiver. Only needs X, Y, Z
