@@ -1,4 +1,3 @@
-import numpy as np
 from prettytable import PrettyTable
 import math
 
@@ -6,6 +5,7 @@ class Receiver:
     def __init__(self, name, phi_0, lambda_0, h_0, known):
         self.name = name
         self.known = known
+
         #Ellipsiodal coordinates
         self.phi = math.radians(phi_0)
         self.lambda_ = math.radians(lambda_0)
@@ -46,7 +46,6 @@ class Receiver:
             self.estimated_Y = Y
             self.estimated_Z = Z
 
-
     def _calculate_N(self):
         a = self.a
         b = self.b
@@ -56,10 +55,7 @@ class Receiver:
 
 
     ##Task 2
-
     def calc_p(self, satellit, t):
-        #p_j^i(t)
-        # x = (satellite_X-receiver_X)^2
         satellite_coordinates = satellit.get_coordinates(self.name, t)
         satellite_X = satellite_coordinates[0]
         satellite_Y = satellite_coordinates[1]
@@ -71,11 +67,8 @@ class Receiver:
         return [self.estimated_X, self.estimated_Y, self.estimated_Z]
     
 
-
-
-
     ###Task 4
-        ## Transformation from cartesion to ellipsodial
+    ## Transformation from cartesion to ellipsodial
     def calculate_estimated_height(self):
         #Step 1: Calc p
         p = self._calc_p()
@@ -98,9 +91,13 @@ class Receiver:
 
         self.estimatedHeight = self.h
 
+        lambda_ = math.degrees(math.atan(self.estimated_Y/self.estimated_X))
+        if(not 0<lambda_<180):
+            lambda_ += 180
+
         estimated = PrettyTable()
-        estimated.field_names = (["phi","lambda", "h","T"])
-        estimated.add_row([self.radians_to_degree(self.phi0), self.radians_to_degree(math.atan(self.approxY/self.approxX)), self.estimatedHeight, self.receiver_clock_correction])
+        estimated.field_names = (["phi","lambda", "h"])
+        estimated.add_row([math.degrees(self.phi0),lambda_,self.estimatedHeight])
         estimated.align = "l"
         estimated.title = "Estimated receiver position, geodetic coordinates"
         print(estimated)
@@ -108,12 +105,12 @@ class Receiver:
 
     # Help functions for transformation from cartesion to ellipsodial
     def _calc_p(self):
-        p = math.sqrt(self.approxX**2+self.approxY**2)
+        p = math.sqrt(self.estimated_X**2+self.estimated_Y**2)
         self.p = p
         return p
 
     def _calc_phi0(self, p, N0 = 1, h = 0):
-        Z = self.approxZ
+        Z = self.estimated_Z
         e = (self.a**2-self.b**2)/self.a**2
         NNH = N0/(N0+h)
         phi0 = math.atan((Z/p)*(1-e*NNH)**-1)
